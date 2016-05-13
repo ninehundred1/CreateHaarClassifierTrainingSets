@@ -84,7 +84,6 @@ def get_video_source():
 	returns:
 	the camera object to read frames from and the frames per second (default to 24)
 	'''
-	print 'please select source movie'
 	filename = askopenfilename() 
 	save_name = os.path.basename(filename)
 	if not save_name:
@@ -258,20 +257,22 @@ def initialize_image_streams(use_movie):
 	'''
 	camera = fps = dir_name = file_names_list = None
 	if use_movie:
+		print 'please select movie file'
 		camera, fps = get_video_source()[0:2]
 	else:
+		print 'please select folder with images'
 		dir_name, file_names_list = get_filelist_from_user()
 	bg_image_path = get_bg_image()
 	bg_image = cv2.imread(bg_image_path,0)
-	cv2.resize(bg_image, (width, height)) 
 	#get one image to get size of movie
 	success,image = camera.read()
 	width = np.size(image, 1)
 	height = np.size(image, 0)
-	return camera, fps, width, height, bg_image, dir_name, file_names_list
+	cv2.resize(bg_image, (width, height)) 
+	return camera, fps, width, height, bg_image, dir_name, file_names_list, bg_image_path
 
 
-def create_directory():
+def create_directory(bg_image_path):
 	'''
 	set up directory /positive_images to save images in in current directory.
 	If already existing, nothing happens
@@ -287,7 +288,7 @@ def create_directory():
 	return newpath
 
 
-def rotate_image(image):
+def rotate_image(image, width, height):
 	'''
 	Roate image a random degree between -45 and 45 degrees
 
@@ -299,17 +300,13 @@ def rotate_image(image):
 	degrees = randint(-45,45)
 	center = (width / 2, height / 2)
 	M = cv2.getRotationMatrix2D(center, degrees, 1.0)
-	try:
-		rotated = cv2.warpAffine(image, M, (width, height), borderValue = (0,0,0))
-	except Exception:
-		print('error in rotate')
-		continue
-	#cv2.imshow('rotated', rotated)
-	#cv2.waitKey(0)
+	rotated = cv2.warpAffine(image, M, (width, height), borderValue = (255,255,255))
+	cv2.imshow('rotated', rotated)
+	cv2.waitKey(0)
 	return rotated
 
 
-def distort_image(image_rotated):
+def distort_image(image_rotated, width, height):
 	'''
 	Distorts image by random amount between 0% and 10% of size in all directions.
 
@@ -324,13 +321,9 @@ def distort_image(image_rotated):
 		[width* (randint(9,10)/float(10)),height* (randint(9,10)/float(10))]])
 	pts_dest = np.float32([[0,0],[width,0],[0,height],[width,height]])
 	M = cv2.getPerspectiveTransform(pts_origin,pts_dest)
-	try:
-		distorted = cv2.warpPerspective(rotated,M,(width,height))
-	except:
-		print('error in distort')
-		continue
-	#cv2.imshow('distorted', distorted)
-	#cv2.waitKey(0)
+	distorted = cv2.warpPerspective(image_rotated,M,(width,height))
+	cv2.imshow('distorted', distorted)
+	cv2.waitKey(0)
 	return distorted
 
 
@@ -352,8 +345,8 @@ def substract_bg(image, bg_image):
 	image_blurred_copy = image_blurred
 	image_blurred = cv2.medianBlur(image_blurred,3)
 	delta_image = bg_image-image_blurred
-	#cv2.imshow('substractBG', delta_image)
-	#cv2.waitKey(0)
+	cv2.imshow('substractBG', delta_image)
+	cv2.waitKey(0)
 	return delta_image, image_blurred, image_blurred_copy
 
 
@@ -367,8 +360,8 @@ def threshold_image(delta_image):
 	thresholded image
 	'''
 	ret,thresh = cv2.threshold(delta_image,70,255,cv2.THRESH_BINARY)
-	#cv2.imshow('threshold', thresh)
-	#cv2.waitKey(0)
+	cv2.imshow('threshold', thresh)
+	cv2.waitKey(0)
 	return thresh
 
 
@@ -384,8 +377,8 @@ def find_largest_contour(image_mouse, contours):
 	'''
 	image_mouse2 = image_mouse
 	cv2.drawContours(image_mouse2, contours, -1, (255,255,0), 3)
-	#cv2.imshow('contours', image_mouse2)
-	#cv2.waitKey(0)
+	cv2.imshow('contours', image_mouse2)
+	cv2.waitKey(0)
 	areas = [cv2.contourArea(c) for c in contours]
 	max_index = np.argmax(areas)
 	return contours[max_index]
@@ -440,12 +433,12 @@ def replace_with_rdm_bg(file_names_list_ran_bg, dir_name_ran_bg, width, height, 
 	mask_out2=cv2.subtract(mask2,image_mouse_copy)
 	mask_out2=cv2.subtract(mask2,mask_out2)
 	image = cv2.add(mask_out, mask_out2)
-	#cv2.imshow('replaced', image)
-	#cv2.waitKey(0)
+	cv2.imshow('replaced', image)
+	cv2.waitKey(0)
 	return image
 
 
-def append_to_txt_file(x,y,w,h, count):
+def append_to_txt_file(x,y,w,h, count, list_coords):
 	'''
 	Appends image file name and bounding box of object to the 
 	positives.txt file needed for training
@@ -491,8 +484,7 @@ def parse_images(use_movie = False, replace_ran_bg = True):
 	makes new folder in directory of movie and saves images in that folder.
 
 	'''
-	
-	camera, fps, width, height, bg_image, dir_name, file_names_list = initialize_image_streams(use_movie)
+	camera, fps, width, height, bg_image, dir_name, file_names_list, bg_image_path = initialize_image_streams(use_movie)
 	if replace_ran_bg == True:
 		print 'please select folder with random images'
 		dir_name_ran_bg, file_names_list_ran_bg = get_filelist_from_user()
@@ -500,7 +492,7 @@ def parse_images(use_movie = False, replace_ran_bg = True):
 	cycle = 1
 	num_cycles = 0
 	list_coords = []
-	newpath = create_directory()
+	newpath = create_directory(bg_image_path)
 	if not use_movie:
 		num_cycles = raw_input('how many times do you want to re-use each image? (try to get 1000 or so total):')
 
@@ -516,24 +508,34 @@ def parse_images(use_movie = False, replace_ran_bg = True):
 
 		if not success:
 			break
-		image_rotated = rotate_image(image)
-		image_distorted = distort_image(image_rotated)
-		delta_image, image_mouse, image_mouse_copy = substract_bg(distorted, bg_image)
+		try:
+			image_rotated = rotate_image(image, width, height)
+		except Exception:
+			print('error in rotate')
+			continue
+		try:
+			image_distorted = distort_image(image_rotated, width, height)
+		except Exception:
+			print('error in distortion')
+			continue
+		delta_image, image_mouse, image_mouse_copy = substract_bg(image_distorted, bg_image)
 		thresh = threshold_image(delta_image)
 		contours, hierarchy = cv2.findContours(thresh,cv2.RETR_TREE,cv2.CHAIN_APPROX_SIMPLE)
-		cnt = find_largest_contour(image_mouse, contours)
+		cnt = find_largest_contour(image_distorted, contours)
 		x,y,w,h = cv2.boundingRect(cnt)
 		poly = make_bounding_polygon(cnt)
-		cv2.fillPoly(image_mouse, pts =[poly], color=(255,255,255))
-		#cv2.imshow('fill largerst', image_mouse)
-		#cv2.waitKey(0)
+		cv2.fillPoly(image_distorted, pts =[poly], color=(255,255,255))
+		cv2.imshow('fill largerst', image_distorted)
+		cv2.waitKey(0)
 		if replace_ran_bg == True:
 			image = replace_with_rdm_bg(file_names_list_ran_bg, dir_name_ran_bg, width, height, poly,image_mouse_copy)
+		else:
+			image = image_distorted_copy
 		cv2.imwrite(newpath+'/'+"frame%d.jpg" % count, image)	
 		cv2.rectangle(image,(x,y),(x+w,y+h),(0,255,0),2)
-		#cv2.imshow('for training', image)
-		#cv2.waitKey(0)
-		append_to_txt_file(x,y,w,h, count, coor_string, coor_string)
+		cv2.imshow('for training', image)
+		cv2.waitKey(0)
+		append_to_txt_file(x,y,w,h, count, list_coords)
 		count += 1
 		print 'converted image: %s' % count 
 		#break if ESC   
@@ -650,17 +652,18 @@ def show_instructions():
 	"")
 		
 def main():
-	var = raw_input('Choose one:'... 
-		'\n-(1) Make positive training set by converting movie to images with original background'...
-		'\n-(2) Make positive training set by converting images in folder to images with original background'...
-		'\n-(3) Make positive training set by converting movie and add random background'...
-		'\n-(4) Make positive training set by converting images in folder and add random background (can repeat)'...
-		'\n-(5) Make negative training set by extracting BRIGHT background of images from images in folder (needs static BG)'...
-		'\n-(6) Make negative training set by extracting DARK background of images from images in folder (needs static BG)'...
-		'\n-(7) Make negative training set from from images in folder with no change to images'...
-		'\n-(8) Convert movie to individual images (use this first if you want to use a movie for (5/6))'...
-		'\n-(9) Create only the negatives.txt file from a given image folder'...
-		'\n-(0) INSTRUCTIONS')
+	var = raw_input('Choose one:'
+		'\n(1) Make positive training set by converting movie to images with original background'
+		'\n(2) Make positive training set by converting images in folder to images with original background'
+		'\n(3) Make positive training set by converting movie and add random background'
+		'\n(4) Make positive training set by converting images in folder and add random background -can repeat-'
+		'\n(5) Make negative training set by extracting BRIGHT background of images from images in folder (needs static BG)'
+		'\n(6) Make negative training set by extracting DARK background of images from images in folder (needs static BG)'
+		'\n(7) Make negative training set from from images in folder with no change to images'
+		'\n(8) Convert movie to individual images (use this first if you want to use a movie for (5/6))'
+		'\n(9) Create only the negatives.txt file from a given image folder'
+		'\n(0) INSTRUCTIONS'
+		'\n:')
 	
 	
 	if var is '1':
@@ -673,11 +676,11 @@ def main():
 
 	elif var is '3':
 		print 'Converting movie with random background...'
-		parse_images(use_movie = True, replace_ran_bg = False)
+		parse_images(use_movie = True, replace_ran_bg = True)
 
 	elif var is '4':
 		print 'Converting image folder with random background...'
-		parse_images(use_movie = False, replace_ran_bg = False)
+		parse_images(use_movie = False, replace_ran_bg = True)
 
 	elif var is '5':
 		print 'Extracting bright background only from folder...'

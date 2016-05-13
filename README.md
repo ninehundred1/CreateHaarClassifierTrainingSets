@@ -53,8 +53,7 @@ The module will also slightly rotate and distort your objects randomly, which wi
 
 **Here is what this module does:**
 
-1. In the case of using a movie as the image source and replacing random backgrounds, these are the steps that are done from the initial iamges to the final image:
-
+In the case of using a movie as the image source with a static background a few images get averaged to remove the object and create a background-only image. That background is then substracted from all images to extract the object only. Then the image is thresholded, contoured to selectively keep the object. The background is then replaced by a random image. A vector of the border of the object is saved along with the file name and that is used with the images as the training set.
 
 
 ![OBJECTTRACKER_allobjects](https://camo.githubusercontent.com/850b0d35defe2ace5c323700f2b3fac219e318aa/687474703a2f2f692e696d6775722e636f6d2f67516b56464a412e6a7067)
@@ -70,7 +69,17 @@ In addition to the images a txt file with the name of the image and the number a
 
 
 
-If you are not using a movie, you need to supply a suitable image for the background substraction. In the case of the images from the google search above, just a plain white image is enough.
+If you are not using a movie, you need to supply a suitable image for the background substraction. In the case of the images from the google search above, just a plain white image is enough. 
+As before the image gets thresholded, the contour of the object is found and the background replaced.
+
+The images created this way are used as positive sets, then random images without your object are used negative sets and both sets are converted to vectors, which are then used in training to create the classifier file.
+
+That file can then be used with CV2 Haar detection (below the left is using trained Haar classifiers, the right is using histogram shifting without training).
+
+
+![OBJECTTRACKER_allobjects](http://i.imgur.com/0KSFkTG.jpg)
+
+
 
 When done you can use the training sets to train your own classifiers (see below for instructions).
 

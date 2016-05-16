@@ -225,7 +225,7 @@ def parse_movie_frames_to_file():
 	returns:
 	makes new folder in directory of movie and saves images in that folder
 	'''
-	camera, fps, width, height, bg_image, dir_name, file_names_list = initialize_image_streams(use_movie)
+	camera, fps, width, height, bg_image, dir_name, file_names_list = initialize_image_streams(True)
 	newpath = dir_name+'/extracted_images'
 	if not os.path.exists(newpath):
 		os.makedirs(newpath)
@@ -259,13 +259,14 @@ def initialize_image_streams(use_movie):
 	if use_movie:
 		print 'please select movie file'
 		camera, fps = get_video_source()[0:2]
+		#get one image to get size of movie
+		success,image = camera.read()
 	else:
 		print 'please select folder with images'
 		dir_name, file_names_list = get_filelist_from_user()
+		image = cv2.imread(dir_name+'/'+file_names_list[0])
 	bg_image_path = get_bg_image()
 	bg_image = cv2.imread(bg_image_path,0)
-	#get one image to get size of movie
-	success,image = camera.read()
 	width = np.size(image, 1)
 	height = np.size(image, 0)
 	cv2.resize(bg_image, (width, height)) 
@@ -301,8 +302,8 @@ def rotate_image(image, width, height):
 	center = (width / 2, height / 2)
 	M = cv2.getRotationMatrix2D(center, degrees, 1.0)
 	rotated = cv2.warpAffine(image, M, (width, height), borderValue = (255,255,255))
-	cv2.imshow('rotated', rotated)
-	cv2.waitKey(0)
+	#cv2.imshow('rotated', rotated)
+	#cv2.waitKey(0)
 	return rotated
 
 
@@ -322,8 +323,8 @@ def distort_image(image_rotated, width, height):
 	pts_dest = np.float32([[0,0],[width,0],[0,height],[width,height]])
 	M = cv2.getPerspectiveTransform(pts_origin,pts_dest)
 	distorted = cv2.warpPerspective(image_rotated,M,(width,height))
-	cv2.imshow('distorted', distorted)
-	cv2.waitKey(0)
+	#cv2.imshow('distorted', distorted)
+	#cv2.waitKey(0)
 	return distorted
 
 
@@ -345,8 +346,8 @@ def substract_bg(image, bg_image):
 	image_blurred_copy = image_blurred
 	image_blurred = cv2.medianBlur(image_blurred,3)
 	delta_image = bg_image-image_blurred
-	cv2.imshow('substractBG', delta_image)
-	cv2.waitKey(0)
+	#cv2.imshow('substractBG', delta_image)
+	#cv2.waitKey(0)
 	return delta_image, image_blurred, image_blurred_copy
 
 
@@ -360,8 +361,8 @@ def threshold_image(delta_image):
 	thresholded image
 	'''
 	ret,thresh = cv2.threshold(delta_image,70,255,cv2.THRESH_BINARY)
-	cv2.imshow('threshold', thresh)
-	cv2.waitKey(0)
+	#cv2.imshow('threshold', thresh)
+	#cv2.waitKey(0)
 	return thresh
 
 
@@ -377,8 +378,8 @@ def find_largest_contour(image_mouse, contours):
 	'''
 	image_mouse2 = image_mouse
 	cv2.drawContours(image_mouse2, contours, -1, (255,255,0), 3)
-	cv2.imshow('contours', image_mouse2)
-	cv2.waitKey(0)
+	#cv2.imshow('contours', image_mouse2)
+	#cv2.waitKey(0)
 	areas = [cv2.contourArea(c) for c in contours]
 	max_index = np.argmax(areas)
 	return contours[max_index]
@@ -433,12 +434,12 @@ def replace_with_rdm_bg(file_names_list_ran_bg, dir_name_ran_bg, width, height, 
 	mask_out2=cv2.subtract(mask2,image_mouse_copy)
 	mask_out2=cv2.subtract(mask2,mask_out2)
 	image = cv2.add(mask_out, mask_out2)
-	cv2.imshow('replaced', image)
-	cv2.waitKey(0)
+	#cv2.imshow('replaced', image)
+	#cv2.waitKey(0)
 	return image
 
 
-def append_to_txt_file(x,y,w,h, count, list_coords):
+def append_to_txt_file(x,y,w,h, cycle, count, list_coords):
 	'''
 	Appends image file name and bounding box of object to the 
 	positives.txt file needed for training
@@ -450,7 +451,7 @@ def append_to_txt_file(x,y,w,h, count, list_coords):
 	modifies the list as list is passed by reference
 	'''
 	coor_string = '\t'.join([str(x),str(y), str(w),str(h)])
-	list_entry = 'positive_images/frame%d.jpg' %count +'\t1\t'+coor_string
+	list_entry = 'positive_images/frame%d%d.jpg' %(cycle, count) +'\t1\t'+coor_string
 	list_coords.append(list_entry)
 
 
@@ -504,7 +505,7 @@ def parse_images(use_movie = False, replace_ran_bg = True):
 			if count == len(file_names_list)-1:
 				count = 0
 				cycle += 1
-			success = [False, True][cycle == num_cycles] 
+			success = [False, True][cycle is not int(num_cycles)+1] 
 
 		if not success:
 			break
@@ -525,23 +526,24 @@ def parse_images(use_movie = False, replace_ran_bg = True):
 		x,y,w,h = cv2.boundingRect(cnt)
 		poly = make_bounding_polygon(cnt)
 		cv2.fillPoly(image_distorted, pts =[poly], color=(255,255,255))
-		cv2.imshow('fill largerst', image_distorted)
-		cv2.waitKey(0)
+		#cv2.imshow('fill largerst', image_distorted)
+		#cv2.waitKey(0)
 		if replace_ran_bg == True:
 			image = replace_with_rdm_bg(file_names_list_ran_bg, dir_name_ran_bg, width, height, poly,image_mouse_copy)
 		else:
-			image = image_distorted_copy
-		cv2.imwrite(newpath+'/'+"frame%d.jpg" % count, image)	
+			image = image_mouse_copy
+		cv2.imwrite(newpath+'/'+"frame%d%d.jpg" % (cycle, count), image)	
 		cv2.rectangle(image,(x,y),(x+w,y+h),(0,255,0),2)
-		cv2.imshow('for training', image)
-		cv2.waitKey(0)
-		append_to_txt_file(x,y,w,h, count, list_coords)
+		#cv2.imshow('for training', image)
+		#cv2.waitKey(0)
+		append_to_txt_file(x,y,w,h, cycle, count, list_coords)
 		count += 1
-		print 'converted image: %s' % count 
+		print 'converted image %s from cycle %s' %(count, cycle)
 		#break if ESC   
 		if cv2.waitKey(10) == 27:
 			break
 	write_txt_file(newpath,list_coords)
+	print 'all converted'
 
 
 def show_instructions():
@@ -692,7 +694,7 @@ def main():
 
 	elif var is '7':
 		print 'Converting images with no change...'
-		convert_images_to_negatives_set(extract_only = True)
+		convert_images_to_negatives_set()
 
 	elif var is '8':
 		print 'Converting movie to individual frame images...'
